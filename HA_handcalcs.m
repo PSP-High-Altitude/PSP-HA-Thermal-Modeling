@@ -3,20 +3,20 @@ clear
 clc
 
 M_inf = [2 3 4];    % Freestream local mach Number (unitless)
-Altitude = [10000 50000 10000]; % Altitude of rocket (m)
+Altitude = [50 100 200]; % Altitude of rocket (m)
 
 [T_inf,~,P_inf,rho_inf] = atmosisa(Altitude);
-P_abs =  P_inf ./101335; 
+P_abs =  P_inf ./101325; % Freestream pressure [atm] 
 
 k_titanium = 1078*10^3; % Thermal conductivity of Titanium (J/g*K)
 rocket_length = 3;  % Length of rocket (m)
 T_w = 300;      % Initial wall temp (K)
 
 %% Gas Properties Lookup Tables 
-R = 0.028964917; % Specific gas constant (kg/mol)
+R = 287.1; % Specific gas constant of air (J/ kg * K)
 % Tables for air cp, k as a function of temperature (Leons thing)
 
-cp = 1010; %Cp (J/kg * K)
+cp = readtable('CpTable.xlsx');
 g = [1.1 1.2 1.3]; % Ratio of Specfic Heats (unitless)
 %% Oblique Shock Relations
 
@@ -77,7 +77,7 @@ for i =1:1:length(M_inf)
     Po2_b=Po2_Po1_b.*Po_P_behind_shock.*P_abs(i);
 
     %%pressure,tempearture and density immediately behind shock wave(Q.10(b))
-    P_local(i) = Po2_b./Po_P_behind_shock;
+    P_local(i) = (Po2_b./Po_P_behind_shock) * 101325;
     T_local(i) = To./To_T_behind_shock; % Freestream local temperature (K)
     rho_local(i) = rho_inf(i).*((P_local(i)./P_abs(i)).^(1./g(i)));
     V_local(i) = m_cone(i) * sqrt(R*T_local(i)*g(i)); % Freestream local velocity (m/s)
@@ -113,7 +113,8 @@ for i = 1:1:length(M_inf)
     Pr_star = u_star * cp_star / k_air_star; % Reference temperature Prandtl number (m^2/s)
 
     % Reynolds Number
-    rho_star = P_local(i) / (R * T_star);  % Reference temperature density (kg/m)
+    R_diff = 0.028964917; % Molar mass of air (kg/mol)
+    rho_star = P_local(i) / (R_diff * T_star);  % Reference temperature density (kg/m)
     u_star = u_0 * (T_star / T_pran_ref) ^ (3 / 2) * (T_pran_ref + S) / (T_star + S) * 10 ^ 3; % Dynamic viscosity of air (kg/m*s)
 
     Reynolds_star = rho_star * V_local(i) * rocket_length / u_star;
@@ -129,3 +130,21 @@ for i = 1:1:length(M_inf)
     q(i) = h(i) * (T_aw - T_w);
 end
 
+%% HA Airframe Skin Temps %%
+
+temp = 1;
+time = [1:1:3]; % Time step
+T_o = 1200; % Initial Wall Temperature [K]
+[t,y] = ode23s(@solver,time,[T_o],odeset('RelTol',1e-12,'AbsTol',1e-12),temp,h,T_inf,T_local);
+
+function Odesolver = solver(t,y,temp,h,T_inf,T_local)
+    rho = 4420; % Density of titanium [kg/m^3]
+    V = 30; % Voulume of the airframe [m^3]
+    A = 20; % Surface area of the airframe [m^2]
+    c = 554.284; % Specific heat of titanium [J/kg * K]
+    sigma = 5.6703e-8; % Stefan-Boltzmann Constant [W/m^2 * K^4]
+    epi = 0.5; % Emmisivity
+    dydt1 = (-A * (h(temp)*(y(1)-T_inf(temp))+(sigma*epi*((y(1)^4) - (T_local(temp))^4)))) / (rho * V * c);
+    Odesolver = [dydt1];
+    temp = temp + 1;
+end
