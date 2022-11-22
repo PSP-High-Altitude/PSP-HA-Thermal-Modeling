@@ -2,13 +2,13 @@
 clear
 clc
 
-M_inf = [2:0.01:4.5];    % Freestream local mach Number (unitless)
-Altitude = [10000:40:20000]; % Altitude of rocket (m)
+M_inf = linspace(2,4,60);   % Freestream local mach Number (unitless)
+Altitude = linspace(10,100,60); % Altitude of rocket (m)
 
 [T_inf,~,P_inf,rho_inf] = atmosisa(Altitude);
 P_abs =  P_inf ./101325; % Freestream pressure [atm] 
 
-%k_titanium = 1078*10^3; % Thermal conductivity of Titanium (J/g*K)
+k_titanium = 1078*10^3; % Thermal conductivity of Titanium (J/g*K)
 rocket_length = 3;  % Length of rocket (m)
 T_w = 300;      % Initial wall temp (K)
 
@@ -21,6 +21,7 @@ k_air = airProp2(100:1:2500,'k');
 for i = 1:1:length(T_inf)
     g(i) = cp(round(T_inf(i)))./(cp(round(T_inf(i)))-R); % Ratio of Specfic Heats (unitless)
 end
+
 %% Oblique Shock Relations
 
 theta_cone = 40;    % Half-cone angle
@@ -104,19 +105,19 @@ for i = 1:1:length(M_inf)
     T_pran_ref = 273.11;    % Sutherland reference temperature (K)
     S = 110.56;             % Sutherland's constant (unitless)
 
-    u = u_0 * (T_local(i) / T_pran_ref) ^ (3 / 2) * (T_pran_ref + S) / (T_local(i) + S) * 10 ^ 3; % Dynamic viscosity of air (kg/m*s)
+    u = u_0 * (T_local(i) / T_pran_ref) ^ (3 / 2) * (T_pran_ref + S) / (T_local(i) + S); % Dynamic viscosity of air (kg/m*s)
 
     Pr = u .* cp_pran(i) ./ k_pran(i);    % Prandtl Number (m^2/s)
 
 
     %% Adiabatic Wall Temperature
     r = Pr ^ (1 / 3);    % Turbulent Prandtl number (m^2/s)
-    T_aw = T_local(i) * (1 + r * (g_pran(i) - 1) / 2 * m_cone(i) ^ 2);
+    T_aw(i) = T_local(i) * (1 + r * (g_pran(i) - 1) / 2 * m_cone(i) ^ 2);
     T_aw_stag = T_local(i) * (1 + (g_pran(i) - 1) / 2 * m_cone(i) ^ 2);
 
     %% Heat Transfer Coefficient with eador-Sfart Reference Temperature Method for Turbulent Flow
 
-    T_star = T_local(i) * (0.55 * (1 + T_aw / T_local(i)) + 0.16 * r * ((g_pran(i) - 1) / 2) * m_cone(i) ^ 2);
+    T_star = T_local(i) * (0.55 * (1 + T_aw(i) / T_local(i)) + 0.16 * r * ((g_pran(i) - 1) / 2) * m_cone(i) ^ 2);
     % T_star = T_inf + 0.5 * (T_w - T_inf) + 0.22 * (T_aw - T_w);
 
     for l = 1:1:length(T_local)
@@ -133,9 +134,8 @@ for i = 1:1:length(M_inf)
     Pr_star = u_star * cp_star(i) / k_star(i); % Reference temperature Prandtl number (m^2/s)
 
     % Reynolds Number
-    R_diff = 0.028964917; % Molar mass of air (kg/mol)
-    rho_star = P_local(i) / (R_diff * T_star);  % Reference temperature density (kg/m)
-    u_star = u_0 * (T_star / T_pran_ref) ^ (3 / 2) * (T_pran_ref + S) / (T_star + S) * 10 ^ 3; % Dynamic viscosity of air (kg/m*s)
+    rho_star = P_local(i) / (R * T_star);  % Reference temperature density (kg/m)
+    u_star = u_0 * (T_star / T_pran_ref) ^ (3 / 2) * (T_pran_ref + S) / (T_star + S); % Dynamic viscosity of air (kg/m*s)
 
     Reynolds_star = rho_star * V_local(i) * rocket_length / u_star;
 
@@ -147,32 +147,102 @@ for i = 1:1:length(M_inf)
 
 
     %% Heat Flux
-    q(i) = h(i) * (T_aw - T_w);
+    q(i) = h(i) * (T_aw(i) - T_w);
 end
 
 %% HA Airframe Skin Temps %%
 
-time = 1:1:251; % Time step
-T_o = 300; % Initial Wall Temperature [K]
-[t,y] = ode23s(@solver,time,T_o,odeset('RelTol',1e-12,'AbsTol',1e-12),h,T_inf,T_local,time);
+V = 0.0258420814; % Volume of the airframe [m^3]
+A = 1.83; % Surface area of the airframe [m^2]
+biot = h / k_titanium * V / A;
 
-hold on
-grid on
-plot(time,y); % Skin Temp Plot 
-hold off
+IC = 300;
+time = 1:1:60; % Time step
+[time_sol,T_skin] = ode45(@(t,T_skin) energy_equation(t, T_skin, h, T_aw, time, V, A), time, IC);
+T_skin_F = convtemp(T_skin,'K','F');
 
-function Odesolver = solver(t,y,h,T_inf,T_local,time)
-    for i = 1:1:length(time)
-        rho = 4420; % Density of titanium [kg/m^3]
-        V = 50; % Voulume of the airframe [m^3]
-        A = 100; % Surface area of the airframe [m^2]
-        c = 554.284; % Specific heat of titanium [J/kg * K]
-        sigma = 5.6703e-8; % Stefan-Boltzmann Constant [W/m^2 * K^4]
-        epi = 0.31; % Emmisivity
-        dydt1 = (-A .* (h(i).*(y(1)-T_inf(i))+(sigma.*epi.*((y(1).^4) - (T_local(i)).^4)))) ./ (rho .* V .* c);
-        Odesolver = dydt1;
-    end
+
+% plot skin temperature
+yyaxis right
+plot(time_sol, T_skin_F, 'linewidth', 2.5)
+title('Performance')
+xlabel("Time (s)")
+ylabel('Skin Temperature (F)')
+yyaxis left
+plot(time, M_inf, 'linewidth', 2.5)
+ylabel('Mach Number')
+grid on;
+
+% plot thermal quantities
+figure
+
+sgtitle('Thermal Variables') 
+
+subplot(2,2,1)
+plot(time, h, 'linewidth', 2.5)
+title('Heat Transfer Coeff')
+xlabel('Time (s)')
+ylabel('h (W/m^2K)')
+grid on;
+
+subplot(2,2,2)
+plot(time, q, 'linewidth', 2.5)
+title('Heat Flux')
+xlabel('Time (s)')
+ylabel('q (W/m^2)')
+grid on;
+
+subplot(2,2,3)
+plot(time, T_aw, 'linewidth', 2.5)
+title('Adiabatic Wall Temperature')
+xlabel('Time (s)')
+ylabel('T_a_w (K)')
+grid on;
+
+subplot(2,2,4)
+plot(time, biot, 'linewidth', 2.5)
+title('Biot Number')
+xlabel('Time (s)')
+ylabel('Bi')
+grid on;
+
+function T_sdot = energy_equation(t, T_skin, h, T_aw, time, V, A)
+    rho = 4420; % Density of titanium [kg/m^3]
+    c = 554.284; % Specific heat of titanium [J/kg * K]
+    sigma = 5.6703e-8; % Stefan-Boltzmann Constant [W/m^2 * K^4]
+    epi = 0.31; % Emmisivity
+    h = interp1(time,h,t);
+    T_aw = interp1(time,T_aw,t);
+    
+    T_sdot = A * (h * (T_aw - T_skin) - sigma * epi * (T_skin ^ 4 - T_aw ^ 4)) / (rho * V * c);
 end
- 
+
+
+
+% time = 1:1:251; % Time step
+% T_o = 300; % Initial Wall Temperature [K]
+% [t,y] = ode23s(@solver,time,T_o,odeset('RelTol',1e-12,'AbsTol',1e-12),h,T_inf,T_local,time);
+% 
+% 
+% 
+% hold on
+% grid on
+% plot(time,y); % Skin Temp Plot 
+% hold off
+%
+% 
+% function Odesolver = solver(t,y,h,T_inf,T_local,time)
+%     for i = 1:1:length(time)
+%         rho = 4420; % Density of titanium [kg/m^3]
+%         V = 50; % Voulume of the airframe [m^3]
+%         A = 100; % Surface area of the airframe [m^2]
+%         c = 554.284; % Specific heat of titanium [J/kg * K]
+%         sigma = 5.6703e-8; % Stefan-Boltzmann Constant [W/m^2 * K^4]
+%         epi = 0.31; % Emmisivity
+%         dydt1 = (-A .* (h(i).*(y(1)-T_inf(i))+(sigma.*epi.*((y(1).^4) - (T_local(i)).^4)))) ./ (rho .* V .* c);
+%         Odesolver = dydt1;
+%     end
+% end
+
 
 
