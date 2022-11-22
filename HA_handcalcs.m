@@ -2,13 +2,13 @@
 clear
 clc
 
-M_inf = [2 3 4];    % Freestream local mach Number (unitless)
-Altitude = [50 100 200]; % Altitude of rocket (m)
+M_inf = [2:0.01:4.5];    % Freestream local mach Number (unitless)
+Altitude = [10000:40:20000]; % Altitude of rocket (m)
 
 [T_inf,~,P_inf,rho_inf] = atmosisa(Altitude);
 P_abs =  P_inf ./101325; % Freestream pressure [atm] 
 
-k_titanium = 1078*10^3; % Thermal conductivity of Titanium (J/g*K)
+%k_titanium = 1078*10^3; % Thermal conductivity of Titanium (J/g*K)
 rocket_length = 3;  % Length of rocket (m)
 T_w = 300;      % Initial wall temp (K)
 
@@ -16,8 +16,11 @@ T_w = 300;      % Initial wall temp (K)
 R = 287.1; % Specific gas constant of air (J/ kg * K)
 % Tables for air cp, k as a function of temperature (Leons thing)
 
-cp = readtable('CpTable.xlsx');
-g = [1.1 1.2 1.3]; % Ratio of Specfic Heats (unitless)
+cp = airProp2(100:1:2500,'cp');
+k_air = airProp2(100:1:2500,'k');
+for i = 1:1:length(T_inf)
+    g(i) = cp(round(T_inf(i)))./(cp(round(T_inf(i)))-R); % Ratio of Specfic Heats (unitless)
+end
 %% Oblique Shock Relations
 
 theta_cone = 40;    % Half-cone angle
@@ -84,33 +87,50 @@ for i =1:1:length(M_inf)
 end
 
 %% Prandtl Number calculation
+
+    for j = 1:1:length(T_local)
+        k_pran(j) = k_air(round(T_local(j))); % Thermal Conductivity of air (Prandtl Number calculation) (W/ m^2 * K)
+    end
+    for k = 1:1:length(T_local)
+        cp_pran(k) = cp(round(T_local(k))); % Specific heat of air at constant pressure (Prandtl Number calculation) (J/kg*K)
+    end
+
+    for y = 1:1:length(T_local)
+        g_pran(y) = cp(round(T_local(y)))./(cp(round(T_local(y)))-R); % Ratio of Specfic Heats (unitless)
+    end
+
 for i = 1:1:length(M_inf)
     u_0 = 1.716*10^(-5);    % Reference dynamic viscosity (kg/m*s)
     T_pran_ref = 273.11;    % Sutherland reference temperature (K)
     S = 110.56;             % Sutherland's constant (unitless)
 
     u = u_0 * (T_local(i) / T_pran_ref) ^ (3 / 2) * (T_pran_ref + S) / (T_local(i) + S) * 10 ^ 3; % Dynamic viscosity of air (kg/m*s)
-    k_air = 5;  % Thermal conductivity of air (J/kg*K)
 
-    Pr = u * cp / k_air;    % Prandtl Number (m^2/s)
+    Pr = u .* cp_pran(i) ./ k_pran(i);    % Prandtl Number (m^2/s)
 
 
     %% Adiabatic Wall Temperature
     r = Pr ^ (1 / 3);    % Turbulent Prandtl number (m^2/s)
-    T_aw = T_local(i) * (1 + r * (g(i) - 1) / 2 * m_cone(i) ^ 2);
-    T_aw_stag = T_local(i) * (1 + (g(i) - 1) / 2 * m_cone(i) ^ 2);
+    T_aw = T_local(i) * (1 + r * (g_pran(i) - 1) / 2 * m_cone(i) ^ 2);
+    T_aw_stag = T_local(i) * (1 + (g_pran(i) - 1) / 2 * m_cone(i) ^ 2);
 
     %% Heat Transfer Coefficient with eador-Sfart Reference Temperature Method for Turbulent Flow
 
-    T_star = T_local(i) * (0.55 * (1 + T_aw / T_local(i)) + 0.16 * r * ((g(i) - 1) / 2) * m_cone(i) ^ 2);
+    T_star = T_local(i) * (0.55 * (1 + T_aw / T_local(i)) + 0.16 * r * ((g_pran(i) - 1) / 2) * m_cone(i) ^ 2);
     % T_star = T_inf + 0.5 * (T_w - T_inf) + 0.22 * (T_aw - T_w);
 
-    % Prandtl Number with Reference Temp
-    cp_star = 5;  % Specific heat of air at constant pressure (J/kg*K)
-    u_star = u_0 * (T_star / T_pran_ref) ^ (3 / 2) * (T_pran_ref + S) / (T_star + S); % Dynamic viscosity of air (kg/m*s)
-    k_air_star = 5;  % Thermal conductivity of air (J/kg*K)
+    for l = 1:1:length(T_local)
+        k_star(l) = k_air(round(T_local(l))); % Thermal Conductivity of air (Star) (W/ m^2 * K)
+    end
 
-    Pr_star = u_star * cp_star / k_air_star; % Reference temperature Prandtl number (m^2/s)
+    for m = 1:1:length(T_local)
+        cp_star(m) = cp(round(T_local(m))); % Specific heat of air at constant pressure (Star) (J/kg*K)
+    end
+
+    % Prandtl Number with Reference Temp
+    u_star = u_0 * (T_star / T_pran_ref) ^ (3 / 2) * (T_pran_ref + S) / (T_star + S); % Dynamic viscosity of air (kg/m*s)
+
+    Pr_star = u_star * cp_star(i) / k_star(i); % Reference temperature Prandtl number (m^2/s)
 
     % Reynolds Number
     R_diff = 0.028964917; % Molar mass of air (kg/mol)
@@ -123,7 +143,7 @@ for i = 1:1:length(M_inf)
     Nu_star = 0.036 * Reynolds_star ^ 0.8 * Pr_star ^ (1 / 3);
 
     % HTC
-    h(i) = k_air_star * Nu_star / rocket_length; % Heat transfer coefficient (W/m^2*K)
+    h(i) = k_star(i) * Nu_star / rocket_length; % Heat transfer coefficient (W/m^2*K)
 
 
     %% Heat Flux
@@ -132,19 +152,27 @@ end
 
 %% HA Airframe Skin Temps %%
 
-temp = 1;
-time = [1:1:3]; % Time step
-T_o = 1200; % Initial Wall Temperature [K]
-[t,y] = ode23s(@solver,time,[T_o],odeset('RelTol',1e-12,'AbsTol',1e-12),temp,h,T_inf,T_local);
+time = 1:1:251; % Time step
+T_o = 300; % Initial Wall Temperature [K]
+[t,y] = ode23s(@solver,time,T_o,odeset('RelTol',1e-12,'AbsTol',1e-12),h,T_inf,T_local,time);
 
-function Odesolver = solver(t,y,temp,h,T_inf,T_local)
-    rho = 4420; % Density of titanium [kg/m^3]
-    V = 30; % Voulume of the airframe [m^3]
-    A = 20; % Surface area of the airframe [m^2]
-    c = 554.284; % Specific heat of titanium [J/kg * K]
-    sigma = 5.6703e-8; % Stefan-Boltzmann Constant [W/m^2 * K^4]
-    epi = 0.5; % Emmisivity
-    dydt1 = (-A * (h(temp)*(y(1)-T_inf(temp))+(sigma*epi*((y(1)^4) - (T_local(temp))^4)))) / (rho * V * c);
-    Odesolver = [dydt1];
-    temp = temp + 1;
+hold on
+grid on
+plot(time,y); % Skin Temp Plot 
+hold off
+
+function Odesolver = solver(t,y,h,T_inf,T_local,time)
+    for i = 1:1:length(time)
+        rho = 4420; % Density of titanium [kg/m^3]
+        V = 50; % Voulume of the airframe [m^3]
+        A = 100; % Surface area of the airframe [m^2]
+        c = 554.284; % Specific heat of titanium [J/kg * K]
+        sigma = 5.6703e-8; % Stefan-Boltzmann Constant [W/m^2 * K^4]
+        epi = 0.31; % Emmisivity
+        dydt1 = (-A .* (h(i).*(y(1)-T_inf(i))+(sigma.*epi.*((y(1).^4) - (T_local(i)).^4)))) ./ (rho .* V .* c);
+        Odesolver = dydt1;
+    end
 end
+ 
+
+
