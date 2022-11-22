@@ -2,14 +2,14 @@
 clear
 clc
 
-M_inf = linspace(2,4,60);   % Freestream local mach Number (unitless)
-Altitude = linspace(10,100,60); % Altitude of rocket (m)
+M_inf = linspace(3,3,200);   % Freestream local mach Number (unitless)
+Altitude = linspace(25908,25908,200); % Altitude of rocket (m)
 
 [T_inf,~,P_inf,rho_inf] = atmosisa(Altitude);
 P_abs =  P_inf ./101325; % Freestream pressure [atm] 
 
-k_titanium = 1078*10^3; % Thermal conductivity of Titanium (J/g*K)
-rocket_length = 3;  % Length of rocket (m)
+k_titanium = 20.4; % Thermal conductivity of Titanium (W/m^2 * k)
+rocket_length = 1.88;  % Length of rocket (m)
 T_w = 300;      % Initial wall temp (K)
 
 %% Gas Properties Lookup Tables 
@@ -152,12 +152,12 @@ end
 
 %% HA Airframe Skin Temps %%
 
-V = 0.0258420814; % Volume of the airframe [m^3]
-A = 1.83; % Surface area of the airframe [m^2]
+V = 0.0010586853; % Volume of the airframe [m^3]
+A = 1.412706672; % Surface area of the airframe [m^2]
 biot = h / k_titanium * V / A;
 
 IC = 300;
-time = 1:1:60; % Time step
+time = 1:1:200; % Time step
 [time_sol,T_skin] = ode45(@(t,T_skin) energy_equation(t, T_skin, h, T_aw, time, V, A), time, IC);
 T_skin_F = convtemp(T_skin,'K','F');
 
@@ -207,7 +207,7 @@ ylabel('Bi')
 grid on;
 
 function T_sdot = energy_equation(t, T_skin, h, T_aw, time, V, A)
-    rho = 4420; % Density of titanium [kg/m^3]
+    rho = 4500; % Density of titanium [kg/m^3]
     c = 554.284; % Specific heat of titanium [J/kg * K]
     sigma = 5.6703e-8; % Stefan-Boltzmann Constant [W/m^2 * K^4]
     epi = 0.31; % Emmisivity
