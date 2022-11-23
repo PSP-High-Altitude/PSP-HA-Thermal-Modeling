@@ -2,8 +2,35 @@
 clear
 clc
 
-M_inf = linspace(3,3,200);   % Freestream local mach Number (unitless)
-Altitude = linspace(25908,25908,200); % Altitude of rocket (m)
+data = readmatrix('Important_stuff.xlsx');
+Altitude_temp = data(:,1); % Altitude of rocket (m)
+M_inf_temp = data(:,2); % Freestream local mach Number (unitless)
+Max_mach_temp = max(M_inf_temp);
+Max_mach_index = find(M_inf_temp == Max_mach_temp);
+% Apogee = max(Altitude_temp);
+% Apogee_index = find(Altitude_temp == Apogee);
+
+Start_mach = find((M_inf_temp >= 2));
+Start_mach_index = min(Start_mach);
+count = 1;
+
+for i = Start_mach_index:1:Max_mach_index
+        M_inf_temp2(count) = M_inf_temp(i);
+        Altitude_temp2(count) = Altitude_temp(i);
+        count = count + 1;
+end
+
+indexVal = find(M_inf_temp2 == max(M_inf_temp2));
+count = 1;
+
+for i = round(linspace(1,indexVal,200))
+   M_inf(count) = M_inf_temp2(i);
+   Altitude(count) = Altitude_temp2(i);
+   count = count + 1;
+end
+
+% M_inf = linspace(3,3,200);   % Freestream local mach Number (unitless)
+% Altitude = linspace(25908,25908,200); % Altitude of rocket (m)
 
 [T_inf,~,P_inf,rho_inf] = atmosisa(Altitude);
 P_abs =  P_inf ./101325; % Freestream pressure [atm] 
