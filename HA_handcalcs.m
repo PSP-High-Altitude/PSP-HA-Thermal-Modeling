@@ -1,4 +1,4 @@
-%% HA Aerothermal Calculations for Airframe Skin Temps %%
+%% HA Aerothermal Calculations for Airframe & Maybe Nosecone Skin Temps %%
 clear
 clc
 
@@ -115,50 +115,41 @@ for i =1:1:length(M_inf)
 end
 
 %% Prandtl Number calculation
-
-    for j = 1:1:length(T_local)
-        k_pran(j) = k_air(round(T_local(j))); % Thermal Conductivity of air (Prandtl Number calculation) (W/ m^2 * K)
-    end
-    for k = 1:1:length(T_local)
-        cp_pran(k) = cp(round(T_local(k))); % Specific heat of air at constant pressure (Prandtl Number calculation) (J/kg*K)
-    end
-
-    for y = 1:1:length(T_local)
-        g_pran(y) = cp(round(T_local(y)))./(cp(round(T_local(y)))-R); % Ratio of Specfic Heats (unitless)
-    end
-
 for i = 1:1:length(M_inf)
+    
+    k_pran = k_air(round(T_local(i))); % Thermal Conductivity of air (Prandtl Number calculation) (W/ m^2 * K)
+ 
+    cp_pran = cp(round(T_local(i))); % Specific heat of air at constant pressure (Prandtl Number calculation) (J/kg*K)
+
+    g_pran = cp(round(T_local(i)))./(cp(round(T_local(i)))-R); % Ratio of Specfic Heats (unitless)
+
     u_0 = 1.716*10^(-5);    % Reference dynamic viscosity (kg/m*s)
     T_pran_ref = 273.11;    % Sutherland reference temperature (K)
     S = 110.56;             % Sutherland's constant (unitless)
 
     u = u_0 * (T_local(i) / T_pran_ref) ^ (3 / 2) * (T_pran_ref + S) / (T_local(i) + S); % Dynamic viscosity of air (kg/m*s)
 
-    Pr = u .* cp_pran(i) ./ k_pran(i);    % Prandtl Number (m^2/s)
+    Pr = u .* cp_pran ./ k_pran;    % Prandtl Number (m^2/s)
 
 
     %% Adiabatic Wall Temperature
     r = Pr ^ (1 / 3);    % Turbulent Prandtl number (m^2/s)
-    T_aw(i) = T_local(i) * (1 + r * (g_pran(i) - 1) / 2 * m_cone(i) ^ 2);
-    T_aw_stag = T_local(i) * (1 + (g_pran(i) - 1) / 2 * m_cone(i) ^ 2);
+    T_aw(i) = T_local(i) * (1 + r * (g_pran - 1) / 2 * m_cone(i) ^ 2);
+    T_aw_stag = T_local(i) * (1 + (g_pran - 1) / 2 * m_cone(i) ^ 2);
 
     %% Heat Transfer Coefficient with eador-Sfart Reference Temperature Method for Turbulent Flow
 
-    T_star = T_local(i) * (0.55 * (1 + T_aw(i) / T_local(i)) + 0.16 * r * ((g_pran(i) - 1) / 2) * m_cone(i) ^ 2);
+    T_star = T_local(i) * (0.55 * (1 + T_aw(i) / T_local(i)) + 0.16 * r * ((g_pran - 1) / 2) * m_cone(i) ^ 2);
     % T_star = T_inf + 0.5 * (T_w - T_inf) + 0.22 * (T_aw - T_w);
 
-    for l = 1:1:length(T_local)
-        k_star(l) = k_air(round(T_local(l))); % Thermal Conductivity of air (Star) (W/ m^2 * K)
-    end
+    k_star = k_air(round(T_star)); % Thermal Conductivity of air (Star) (W/ m^2 * K)
 
-    for m = 1:1:length(T_local)
-        cp_star(m) = cp(round(T_local(m))); % Specific heat of air at constant pressure (Star) (J/kg*K)
-    end
+    cp_star = cp(round(T_star)); % Specific heat of air at constant pressure (Star) (J/kg*K)
 
     % Prandtl Number with Reference Temp
     u_star = u_0 * (T_star / T_pran_ref) ^ (3 / 2) * (T_pran_ref + S) / (T_star + S); % Dynamic viscosity of air (kg/m*s)
 
-    Pr_star = u_star * cp_star(i) / k_star(i); % Reference temperature Prandtl number (m^2/s)
+    Pr_star = u_star * cp_star / k_star; % Reference temperature Prandtl number (m^2/s)
 
     % Reynolds Number
     rho_star = P_local(i) / (R * T_star);  % Reference temperature density (kg/m)
@@ -170,7 +161,7 @@ for i = 1:1:length(M_inf)
     Nu_star = 0.036 * Reynolds_star ^ 0.8 * Pr_star ^ (1 / 3);
 
     % HTC
-    h(i) = k_star(i) * Nu_star / rocket_length; % Heat transfer coefficient (W/m^2*K)
+    h(i) = k_star * Nu_star / rocket_length; % Heat transfer coefficient (W/m^2*K)
 
 
     %% Heat Flux
@@ -186,15 +177,14 @@ biot = h / k_titanium * V / A;
 IC = 300;
 time = 1:1:200; % Time step
 [time_sol,T_skin] = ode45(@(t,T_skin) energy_equation(t, T_skin, h, T_aw, time, V, A), time, IC);
-T_skin_F = convtemp(T_skin,'K','F');
 
 
 % plot skin temperature
 yyaxis right
-plot(time_sol, T_skin_F, 'linewidth', 2.5)
+plot(time_sol, T_skin, 'linewidth', 2.5)
 title('Performance')
 xlabel("Time (s)")
-ylabel('Skin Temperature (F)')
+ylabel('Skin Temperature (K)')
 yyaxis left
 plot(time, M_inf, 'linewidth', 2.5)
 ylabel('Mach Number')
@@ -234,42 +224,17 @@ ylabel('Bi')
 grid on;
 
 function T_sdot = energy_equation(t, T_skin, h, T_aw, time, V, A)
-    rho = 4500; % Density of titanium [kg/m^3]
     c = 554.284; % Specific heat of titanium [J/kg * K]
     sigma = 5.6703e-8; % Stefan-Boltzmann Constant [W/m^2 * K^4]
     epi = 0.31; % Emmisivity
     h = interp1(time,h,t);
     T_aw = interp1(time,T_aw,t);
-    
+    rho = -0.1416*T_aw + 4461; % Density of titanium [kg/m^3]
+
     T_sdot = A * (h * (T_aw - T_skin) - sigma * epi * (T_skin ^ 4 - T_aw ^ 4)) / (rho * V * c);
 end
 
 
-
-% time = 1:1:251; % Time step
-% T_o = 300; % Initial Wall Temperature [K]
-% [t,y] = ode23s(@solver,time,T_o,odeset('RelTol',1e-12,'AbsTol',1e-12),h,T_inf,T_local,time);
-% 
-% 
-% 
-% hold on
-% grid on
-% plot(time,y); % Skin Temp Plot 
-% hold off
-%
-% 
-% function Odesolver = solver(t,y,h,T_inf,T_local,time)
-%     for i = 1:1:length(time)
-%         rho = 4420; % Density of titanium [kg/m^3]
-%         V = 50; % Voulume of the airframe [m^3]
-%         A = 100; % Surface area of the airframe [m^2]
-%         c = 554.284; % Specific heat of titanium [J/kg * K]
-%         sigma = 5.6703e-8; % Stefan-Boltzmann Constant [W/m^2 * K^4]
-%         epi = 0.31; % Emmisivity
-%         dydt1 = (-A .* (h(i).*(y(1)-T_inf(i))+(sigma.*epi.*((y(1).^4) - (T_local(i)).^4)))) ./ (rho .* V .* c);
-%         Odesolver = dydt1;
-%     end
-% end
 
 
 
