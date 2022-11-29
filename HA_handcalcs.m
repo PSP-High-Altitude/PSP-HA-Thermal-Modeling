@@ -224,12 +224,12 @@ ylabel('Bi')
 grid on;
 
 function T_sdot = energy_equation(t, T_skin, h, T_aw, time, V, A)
-    c = 554.284; % Specific heat of titanium [J/kg * K]
     sigma = 5.6703e-8; % Stefan-Boltzmann Constant [W/m^2 * K^4]
     epi = 0.31; % Emmisivity
     h = interp1(time,h,t);
     T_aw = interp1(time,T_aw,t);
     rho = -0.1416*T_aw + 4461; % Density of titanium [kg/m^3]
+    c = 0.1093*T_aw + 551.54; % Specific heat of titanium [J/kg * K]
 
     T_sdot = A * (h * (T_aw - T_skin) - sigma * epi * (T_skin ^ 4 - T_aw ^ 4)) / (rho * V * c);
 end
