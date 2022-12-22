@@ -7,8 +7,6 @@ Altitude_temp = data(:,1); % Altitude of rocket (m)
 M_inf_temp = data(:,2); % Freestream local mach Number (unitless)
 Max_mach_temp = max(M_inf_temp);
 Max_mach_index = find(M_inf_temp == Max_mach_temp);
-% Apogee = max(Altitude_temp);
-% Apogee_index = find(Altitude_temp == Apogee);
 
 Start_mach = find((M_inf_temp >= 2));
 Start_mach_index = min(Start_mach);
@@ -29,19 +27,24 @@ for i = round(linspace(1,indexVal,200))
    count = count + 1;
 end
 
-% M_inf = linspace(3,3,200);   % Freestream local mach Number (unitless)
-% Altitude = linspace(25908,25908,200); % Altitude of rocket (m)
-
-[T_inf,~,P_inf,rho_inf] = atmosisa(Altitude);
+[T_inf,a_inf,P_inf,rho_inf] = atmosisa(Altitude);
 P_abs =  P_inf ./101325; % Freestream pressure [atm] 
 
-k_titanium = 20.4; % Thermal conductivity of Titanium (W/m^2 * k)
-rocket_length = 1.88;  % Length of rocket (m)
+k_fiber = 1.34907; % Thermal conductivity of fiber glass E (W/m^2 * k)
+rho_fiber = 2563; % Density of fiber glass E (kg/m^3)
+c_fiber = 800; % Cp of fiber glass E (J / kg * K)
+rocket_length = 1.778;  % Length of rocket (m)
 T_w = 300;      % Initial wall temp (K)
+R_nosecone = 0.04953; % Nosecone radius [m]
+D_0 = 0.1016; % Outer Diameter of the Airframe [m]
+D_i = 0.09525; % Inner Diameter of the Airframe [m]
+V = (pi/4) * rocket_length*((D_0^2) - (D_i^2)); % Volume of the airframe [m^3]
+A = pi * D_0 * rocket_length; % Surface area of the airframe [m^2]
+Thermal_diff = k_fiber / (rho_fiber * c_fiber); % Thermal Diffusivity of fiber glass E [m^2 / s]
+L = (D_0 - D_i) / 2; % Thickness through which conduction occure through [m]
 
 %% Gas Properties Lookup Tables 
 R = 287.1; % Specific gas constant of air (J/ kg * K)
-% Tables for air cp, k as a function of temperature (Leons thing)
 
 cp = airProp2(100:1:2500,'cp');
 k_air = airProp2(100:1:2500,'k');
@@ -51,7 +54,7 @@ end
 
 %% Oblique Shock Relations
 
-theta_cone = 40;    % Half-cone angle
+theta_cone = 5.26;    % Half-cone angle
 for i =1:1:length(M_inf)
     %isentropic relations
     To_T_freestream =1+(((g(i)-1)./2).*M_inf(i).^2);
@@ -168,71 +171,90 @@ for i = 1:1:length(M_inf)
     q(i) = h(i) * (T_aw(i) - T_w);
 end
 
+%% Sutton Graves
+k = 1.7415e-4;
+for i=1:1:length(M_inf)
+    V_inf = M_inf(i) * a_inf(i);
+    q_s(i) = k * sqrt(rho_inf(i)/R_nosecone) * (V_inf ^ 3);
+end
+
 %% HA Airframe Skin Temps %%
-
-V = 0.0010586853; % Volume of the airframe [m^3]
-A = 1.412706672; % Surface area of the airframe [m^2]
-biot = h / k_titanium * V / A;
-
-IC = 300;
 time = 1:1:200; % Time step
-[time_sol,T_skin] = ode45(@(t,T_skin) energy_equation(t, T_skin, h, T_aw, time, V, A), time, IC);
+biot = h / k_fiber * V / A;
+Fourier = (Thermal_diff * time) / (L^2);
+
+%IC = 300;
+%[time_sol,T_skin] = ode45(@(t,T_skin) energy_equation(t, T_skin, h, T_aw, time, V, A), time, IC);
 
 
 % plot skin temperature
-yyaxis right
-plot(time_sol, T_skin, 'linewidth', 2.5)
-title('Performance')
-xlabel("Time (s)")
-ylabel('Skin Temperature (K)')
-yyaxis left
-plot(time, M_inf, 'linewidth', 2.5)
-ylabel('Mach Number')
-grid on;
+%yyaxis right
+%plot(time_sol, T_skin, 'linewidth', 2.5)
+%title('Performance')
+%xlabel("Time (s)")
+%ylabel('Skin Temperature (K)')
+%yyaxis left
+%plot(time, M_inf, 'linewidth', 2.5)
+%ylabel('Mach Number')
+%grid on;
 
 % plot thermal quantities
 figure
 
 sgtitle('Thermal Variables') 
 
-subplot(2,2,1)
+subplot(2,3,1)
 plot(time, h, 'linewidth', 2.5)
-title('Heat Transfer Coeff')
+title('Heat Transfer Coeff (Airframe)')
 xlabel('Time (s)')
 ylabel('h (W/m^2K)')
 grid on;
 
-subplot(2,2,2)
+subplot(2,3,2)
 plot(time, q, 'linewidth', 2.5)
-title('Heat Flux')
+title('Heat Flux (Airframe)')
 xlabel('Time (s)')
 ylabel('q (W/m^2)')
 grid on;
 
-subplot(2,2,3)
-plot(time, T_aw, 'linewidth', 2.5)
-title('Adiabatic Wall Temperature')
-xlabel('Time (s)')
-ylabel('T_a_w (K)')
-grid on;
+%subplot(3,2,3)
+%plot(time, T_aw, 'linewidth', 2.5)
+%title('Adiabatic Wall Temperature')
+%xlabel('Time (s)')
+%ylabel('T_a_w (K)')
+%grid on;
 
-subplot(2,2,4)
+subplot(2,3,3)
 plot(time, biot, 'linewidth', 2.5)
-title('Biot Number')
+title('Biot Number (Airframe with Fiberglass)')
 xlabel('Time (s)')
 ylabel('Bi')
 grid on;
 
-function T_sdot = energy_equation(t, T_skin, h, T_aw, time, V, A)
-    sigma = 5.6703e-8; % Stefan-Boltzmann Constant [W/m^2 * K^4]
-    epi = 0.31; % Emmisivity
-    h = interp1(time,h,t);
-    T_aw = interp1(time,T_aw,t);
-    rho = -0.1416*T_aw + 4461; % Density of titanium [kg/m^3]
-    c = 0.1093*T_aw + 551.54; % Specific heat of titanium [J/kg * K]
+subplot(2,3,4)
+plot(time,q_s,'linewidth',2.5)
+title('Heat flux of Stagnation Point')
+xlabel('Time (s)')
+ylabel('q (W/m^2)')
+grid on;
 
-    T_sdot = A * (h * (T_aw - T_skin) - sigma * epi * (T_skin ^ 4 - T_aw ^ 4)) / (rho * V * c);
-end
+subplot(2,3,5)
+plot(time,Fourier,'linewidth',2.5)
+title('Fourier Number (Fiberglass)')
+xlabel('Time (s)')
+ylabel('F_o')
+grid on;
+
+%function T_sdot = energy_equation(t, T_skin, h, T_aw, time, V, A)
+%    sigma = 5.6703e-8; % Stefan-Boltzmann Constant [W/m^2 * K^4]
+%    epi = 0.31; % Emmisivity
+%    h = interp1(time,h,t);
+%    T_aw = interp1(time,T_aw,t);
+%    rho = -0.1416*T_aw + 4461; % Density of titanium [kg/m^3]
+%    c = 0.1093*T_aw + 551.54; % Specific heat of titanium [J/kg * K]
+
+%    T_sdot = A * (h * (T_aw - T_skin) - sigma * epi * (T_skin ^ 4 - T_aw ^ 4)) / (rho * V * c);
+%end
 
 
 
