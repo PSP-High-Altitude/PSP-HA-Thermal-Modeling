@@ -30,9 +30,9 @@ end
 [T_inf,a_inf,P_inf,rho_inf] = atmosisa(Altitude);
 P_abs =  P_inf ./101325; % Freestream pressure [atm] 
 
-k_fiber = 1.34907; % Thermal conductivity of fiber glass E (W/m^2 * k)
-rho_fiber = 2563; % Density of fiber glass E (kg/m^3)
-c_fiber = 800; % Cp of fiber glass E (J / kg * K)
+k_mat = 20.4; % Thermal conductivity of fiber glass E (W/m^2 * k)
+rho_mat = 2563; % Density of fiber glass E (kg/m^3)
+c_mat = 800; % Cp of fiber glass E (J / kg * K)
 rocket_length = 1.778;  % Length of rocket (m)
 T_w = 300;      % Initial wall temp (K)
 R_nosecone = 0.04953; % Nosecone radius [m]
@@ -40,8 +40,9 @@ D_0 = 0.1016; % Outer Diameter of the Airframe [m]
 D_i = 0.09525; % Inner Diameter of the Airframe [m]
 V = (pi/4) * rocket_length*((D_0^2) - (D_i^2)); % Volume of the airframe [m^3]
 A = pi * D_0 * rocket_length; % Surface area of the airframe [m^2]
-Thermal_diff = k_fiber / (rho_fiber * c_fiber); % Thermal Diffusivity of fiber glass E [m^2 / s]
-L = (D_0 - D_i) / 2; % Thickness through which conduction occure through [m]
+Thermal_diff = k_mat / (rho_mat * c_mat); % Thermal Diffusivity of fiber glass E [m^2 / s]
+Thick = (D_0 - D_i) / 2; % Thickness through which conduction occure through [m]
+ 
 
 %% Gas Properties Lookup Tables 
 R = 287.1; % Specific gas constant of air (J/ kg * K)
@@ -54,7 +55,7 @@ end
 
 %% Oblique Shock Relations
 
-theta_cone = 5.26;    % Half-cone angle
+theta_cone = 5.25;    % Half-cone angle
 for i =1:1:length(M_inf)
     %isentropic relations
     To_T_freestream =1+(((g(i)-1)./2).*M_inf(i).^2);
@@ -63,7 +64,7 @@ for i =1:1:length(M_inf)
 
     %freestream stagnation temperature and pressure(To = constant)
     Po1 = Po_P_freestream.*P_abs(i);
-    To = To_T_freestream.*T_inf(i);
+    To(i) = To_T_freestream.*T_inf(i);
 
     %calculation of shock wave angle(Q.10.1(a))
     theta_shock = shock_angle(M_inf(i),theta_cone,g(i));
@@ -80,12 +81,12 @@ for i =1:1:length(M_inf)
 
     %mach number on cone surface is the last value in the array of mach numbers
     %calculated above
-    m_cone(i)=mach(length(mach));
+    m_cone=mach(length(mach));
 
     %isentropic relations
-    To_T_surface=1+(((g(i)-1)./2).*m_cone(i).^2);
-    Po_P_surface=(1+(((g(i)-1)./2).*m_cone(i).^2)).^(g(i)./(g(i)-1));
-    rho0_rho_surface=(1+(((g(i)-1)./2).*m_cone(i).^2)).^(1./(g(i)-1));
+    To_T_surface=1+(((g(i)-1)./2).*m_cone.^2);
+    Po_P_surface=(1+(((g(i)-1)./2).*m_cone.^2)).^(g(i)./(g(i)-1));
+    rho0_rho_surface=(1+(((g(i)-1)./2).*m_cone.^2)).^(1./(g(i)-1));
 
     %ratio of stagnation pressure across the shock wave using equation()
     Po2_Po1=((((g(i)+1)./2.*mn1.^2)./(1+(((g(i)-1)./2).*mn1.^2))).^(g(i)./(g(i)-1)))./((((2.*g(i)./(g(i)+1)).*mn1.^2)-((g(i)-1)./(g(i)+1))).^(1/(g(i)-1)));
@@ -93,28 +94,28 @@ for i =1:1:length(M_inf)
 
     %pressure,tempearture and density on cone surface(Q.10(b))
     Pc = Po2./Po_P_surface;
-    Tc = To./To_T_surface;
+    Tc = To(i)./To_T_surface;
     rho_c = rho_inf(i).*((Pc./P_abs(i)).^(1./g(i)));
 
     %the mach number immediately behind the shock wave will be the first
     %element in the array of mach number calculated above
-    m_behind_shock = mach(1);
+    m_behind_shock(i) = mach(1);
 
     %isentropic relations
-    To_T_behind_shock=1+(((g(i)-1)./2).*m_behind_shock.^2);
-    Po_P_behind_shock=(1+(((g(i)-1)./2).*m_behind_shock.^2)).^(g(i)./(g(i)-1));
-    rho0_rho_behind_shock=(1+(((g(i)-1)./2).*m_behind_shock.^2)).^(1./(g(i)-1));
+    To_T_behind_shock(i)=1+(((g(i)-1)./2).*m_behind_shock(i).^2);
+    Po_P_behind_shock(i)=(1+(((g(i)-1)./2).*m_behind_shock(i).^2)).^(g(i)./(g(i)-1));
+    rho0_rho_behind_shock(i)=(1+(((g(i)-1)./2).*m_behind_shock(i).^2)).^(1./(g(i)-1));
 
     %shock relations
-    mn_b = m_behind_shock.*sin(theta_shock*pi./180);
+    mn_b = m_behind_shock(i).*sin(theta_shock*pi./180);
     Po2_Po1_b=((((g(i)+1)./2.*mn_b.^2)./(1+(((g(i)-1)./2).*mn_b.^2))).^(g(i)./(g(i)-1)))./((((2.*g(i)./(g(i)+1)).*mn_b.^2)-((g(i)-1)/(g(i)+1))).^(1/(g(i)-1)));
-    Po2_b=Po2_Po1_b.*Po_P_behind_shock.*P_abs(i);
+    Po2_b=Po2_Po1_b.*Po_P_behind_shock(i).*P_abs(i);
 
     %%pressure,tempearture and density immediately behind shock wave(Q.10(b))
-    P_local(i) = (Po2_b./Po_P_behind_shock) * 101325;
-    T_local(i) = To./To_T_behind_shock; % Freestream local temperature (K)
+    P_local(i) = (Po2_b./Po_P_behind_shock(i)) * 101325;
+    T_local(i) = To(i)./To_T_behind_shock(i); % Freestream local temperature (K)
     rho_local(i) = rho_inf(i).*((P_local(i)./P_abs(i)).^(1./g(i)));
-    V_local(i) = m_cone(i) * sqrt(R*T_local(i)*g(i)); % Freestream local velocity (m/s)
+    V_local(i) = m_behind_shock(i) * sqrt(R*T_local(i)*g(i)); % Freestream local velocity (m/s)
 end
 
 %% Prandtl Number calculation
@@ -137,12 +138,12 @@ for i = 1:1:length(M_inf)
 
     %% Adiabatic Wall Temperature
     r = Pr ^ (1 / 3);    % Turbulent Prandtl number (m^2/s)
-    T_aw(i) = T_local(i) * (1 + r * (g_pran - 1) / 2 * m_cone(i) ^ 2);
-    T_aw_stag = T_local(i) * (1 + (g_pran - 1) / 2 * m_cone(i) ^ 2);
+    T_aw(i) = T_local(i) * (1 + r * (g_pran - 1) / 2 * m_behind_shock(i) ^ 2);
+    T_aw_stag = T_local(i) * (1 + (g_pran - 1) / 2 * m_behind_shock(i) ^ 2);
 
     %% Heat Transfer Coefficient with eador-Sfart Reference Temperature Method for Turbulent Flow
 
-    T_star = T_local(i) * (0.55 * (1 + T_aw(i) / T_local(i)) + 0.16 * r * ((g_pran - 1) / 2) * m_cone(i) ^ 2);
+    T_star = T_local(i) * (0.55 * (1 + T_aw(i) / T_local(i)) + 0.16 * r * ((g_pran - 1) / 2) * m_behind_shock(i) ^ 2);
     % T_star = T_inf + 0.5 * (T_w - T_inf) + 0.22 * (T_aw - T_w);
 
     k_star = k_air(round(T_star)); % Thermal Conductivity of air (Star) (W/ m^2 * K)
@@ -179,39 +180,64 @@ for i=1:1:length(M_inf)
 end
 
 %% HA Airframe Skin Temps %%
-time = 1:1:200; % Time step
-biot = h / k_fiber * V / A;
-Fourier = (Thermal_diff * time) / (L^2);
+t = 1:1:200; % Time step
+biot = (h / k_mat) * (V / A);
+Fourier = (Thermal_diff * t) / (Thick^2);
+biot_2 = (h / k_mat) * (Thick);
+
+IC = 300;
+
+Biot_known = [0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.15 0.2 0.25 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1 2 3 4 5 6 7 8 9 10 20 30 40 50 100];
+C_known = [1.0025 1.005 1.0075 1.0099 1.0124 1.0148 1.0173 1.0197 1.0222 1.0246 1.0365 1.0483 1.0598 1.0712 1.0932 1.1143 1.1345 1.1539 1.1724 1.1902 1.2071 1.3384 1.4191 1.4698 1.5029 1.5253 1.5411 1.5526 1.5611 1.5677 1.5919 1.5973 1.5993 1.6002 1.6015];
+Zeta_known = [0.1412 0.1995 0.2440 0.2814 0.3143 0.3438 0.3709 0.3960 0.4195 0.4417 0.5376 0.6170 0.6856 0.7465 0.8516 0.9408 1.0184 1.0873 1.1490 1.2048 1.2558 1.5994 1.7887 1.9081 1.9898 2.0490 2.0937 2.1286 2.1566 2.1795 2.2881 2.3261 2.3455 2.3572 2.3809];
+C = interp1(Biot_known,C_known,biot_2);
+zeta = interp1(Biot_known,Zeta_known,biot_2);
+
+
+for i = 1:1:length(t)
+    if biot < 0.1 % Lum sum
+        [t,T_internal] = ode45(@(t,T_internal) energy_equation(t, T_internal, h(i), T_aw(i), V, A, T_local(i),rho_mat,c_mat), t, IC);
+    elseif Fourier(i) > 0.2 % 1st term approx
+        T_internal(i) = (IC - T_local(i)) * (C(i) * exp((-zeta(i)^2)*Fourier(i))) + T_local(i);
+    elseif Fourier(i) <= 0.2
+        Part1 = erfc(Thick/(2*sqrt(Thermal_diff*t(i))));
+        Part2 = exp((h(i)*Thick/k_mat) + ((h(i)^2) * Thermal_diff * t(i))/(k_mat^2));
+        Part3 = erfc((Thick/(2*sqrt(Thermal_diff*t(i)))) + (h(i)*sqrt(Thermal_diff*t(i)) / k_mat));
+        T_internal(i) = (Part1 - (Part2 * Part3))*(T_local(i) - IC) + IC;
+        %T_skin(i) = ((2*q(i)*sqrt((Thermal_diff*time(i))/pi)/k_mat)*exp(-(Thick^2)/(4*Thermal_diff*time(i)))) - ((q(i)*Thick/k_mat) * (erfc(Thick/(2*sqrt(Thermal_diff*time(i)))))) + IC;  
+        %T_skin(i) = IC;
+        %T_skin(i) =(T_local(i) - IC) * (erfc(Thick/(2*Thermal_diff*time(i))) - exp(((h(i)*Thick)/k_mat) + (h(i)^2) * Thermal_diff * time(i)/(k_mat^2)) * erfc((Thick/(2*sqrt(Thermal_diff*time(i)))) + (h(i)*sqrt(Thermal_diff*time(i))/k_mat))) + IC;
+    end
+end
 
 %IC = 300;
 %[time_sol,T_skin] = ode45(@(t,T_skin) energy_equation(t, T_skin, h, T_aw, time, V, A), time, IC);
 
 
-% plot skin temperature
-%yyaxis right
-%plot(time_sol, T_skin, 'linewidth', 2.5)
-%title('Performance')
-%xlabel("Time (s)")
-%ylabel('Skin Temperature (K)')
-%yyaxis left
-%plot(time, M_inf, 'linewidth', 2.5)
-%ylabel('Mach Number')
-%grid on;
+yyaxis right
+plot(t, T_internal, 'linewidth', 2.5)
+title('Performance')
+xlabel("Time (s)")
+ylabel('Internal Temperature (K)')
+yyaxis left
+plot(t, M_inf, 'linewidth', 2.5)
+ylabel('Mach Number')
+grid on;
 
 % plot thermal quantities
 figure
 
 sgtitle('Thermal Variables') 
 
-subplot(2,3,1)
-plot(time, h, 'linewidth', 2.5)
+subplot(3,3,1)
+plot(t, h, 'linewidth', 2.5)
 title('Heat Transfer Coeff (Airframe)')
 xlabel('Time (s)')
 ylabel('h (W/m^2K)')
 grid on;
 
-subplot(2,3,2)
-plot(time, q, 'linewidth', 2.5)
+subplot(3,3,2)
+plot(t, q, 'linewidth', 2.5)
 title('Heat Flux (Airframe)')
 xlabel('Time (s)')
 ylabel('q (W/m^2)')
@@ -224,37 +250,51 @@ grid on;
 %ylabel('T_a_w (K)')
 %grid on;
 
-subplot(2,3,3)
-plot(time, biot, 'linewidth', 2.5)
+subplot(3,3,3)
+plot(t, biot, 'linewidth', 2.5)
 title('Biot Number (Airframe with Fiberglass)')
 xlabel('Time (s)')
 ylabel('Bi')
 grid on;
 
-subplot(2,3,4)
-plot(time,q_s,'linewidth',2.5)
+subplot(3,3,4)
+plot(t,q_s,'linewidth',2.5)
 title('Heat flux of Stagnation Point')
 xlabel('Time (s)')
 ylabel('q (W/m^2)')
 grid on;
 
-subplot(2,3,5)
-plot(time,Fourier,'linewidth',2.5)
+subplot(3,3,5)
+plot(t,Fourier,'linewidth',2.5)
 title('Fourier Number (Fiberglass)')
 xlabel('Time (s)')
 ylabel('F_o')
 grid on;
 
-%function T_sdot = energy_equation(t, T_skin, h, T_aw, time, V, A)
-%    sigma = 5.6703e-8; % Stefan-Boltzmann Constant [W/m^2 * K^4]
-%    epi = 0.31; % Emmisivity
-%    h = interp1(time,h,t);
-%    T_aw = interp1(time,T_aw,t);
-%    rho = -0.1416*T_aw + 4461; % Density of titanium [kg/m^3]
-%    c = 0.1093*T_aw + 551.54; % Specific heat of titanium [J/kg * K]
+subplot(3,3,6)
+plot(t, biot_2, 'linewidth', 2.5)
+title('Biot Number_2 (Airframe with Fiberglass)')
+xlabel('Time (s)')
+ylabel('Bi')
+grid on;
 
-%    T_sdot = A * (h * (T_aw - T_skin) - sigma * epi * (T_skin ^ 4 - T_aw ^ 4)) / (rho * V * c);
-%end
+subplot(3,3,7)
+plot(t,T_inf-T_internal, 'linewidth', 2.5)
+title('Delta Temp (T_i_n_f - T_i_n_t_e_r_n_a_l) (Airframe)')
+xlabel('Time (s)')
+ylabel('Delta Temp (K)')
+grid on; 
+
+
+function T_sdot = energy_equation(time_sol, T_internal, h, T_aw, V, A, T_local,rho_mat,c_mat)
+    sigma = 5.6703e-8; % Stefan-Boltzmann Constant [W/m^2 * K^4]
+    epi = 0.31; % Emmisivity
+    %h = interp1(t,h,time_sol);
+    %T_aw = interp1(t,T_aw,time_sol);
+    %T_local = interp1(t,T_local,time_sol);
+
+    T_sdot = A * (h * (T_aw - T_internal) - sigma * epi * (T_internal ^ 4 - T_local ^ 4)) / (rho_mat * V * c_mat);
+end
 
 
 
