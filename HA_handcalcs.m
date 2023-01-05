@@ -30,18 +30,22 @@ end
 [T_inf,a_inf,P_inf,rho_inf] = atmosisa(Altitude);
 P_abs =  P_inf ./101325; % Freestream pressure [atm] 
 
-k_mat = 20.4; % Thermal conductivity of fiber glass E (W/m^2 * k)
+k_mat = 1.34907; % Thermal conductivity of fiber glass E (W/m^2 * k)
 rho_mat = 2563; % Density of fiber glass E (kg/m^3)
+rho_nose = 4500; % Density of titanium (kg/m^3)
 c_mat = 800; % Cp of fiber glass E (J / kg * K)
+c_nose = 550; % Cp of titanium (J / kg * K)
 rocket_length = 1.778;  % Length of rocket (m)
-T_w = 300;      % Initial wall temp (K)
 R_nosecone = 0.04953; % Nosecone radius [m]
+D_nosecone = R_nosecone*2; % Nosecone diameter [m]
 D_0 = 0.1016; % Outer Diameter of the Airframe [m]
 D_i = 0.09525; % Inner Diameter of the Airframe [m]
 V = (pi/4) * rocket_length*((D_0^2) - (D_i^2)); % Volume of the airframe [m^3]
+V_nose = 0.0001; % Volume of the nosecone [m^3]
 A = pi * D_0 * rocket_length; % Surface area of the airframe [m^2]
+A_nose = 1; % Surface area of the nosecone [m^2]
 Thermal_diff = k_mat / (rho_mat * c_mat); % Thermal Diffusivity of fiber glass E [m^2 / s]
-Thick = (D_0 - D_i) / 2; % Thickness through which conduction occure through [m]
+Thick = (D_0 - D_i) / 2; % Thickness through which conduction occurs through [m]
  
 
 %% Gas Properties Lookup Tables 
@@ -54,8 +58,8 @@ for i = 1:1:length(T_inf)
 end
 
 %% Oblique Shock Relations
-
 theta_cone = 5.25;    % Half-cone angle
+
 for i =1:1:length(M_inf)
     %isentropic relations
     To_T_freestream =1+(((g(i)-1)./2).*M_inf(i).^2);
@@ -115,8 +119,11 @@ for i =1:1:length(M_inf)
     P_local(i) = (Po2_b./Po_P_behind_shock(i)) * 101325;
     T_local(i) = To(i)./To_T_behind_shock(i); % Freestream local temperature (K)
     rho_local(i) = rho_inf(i).*((P_local(i)./P_abs(i)).^(1./g(i)));
-    V_local(i) = m_behind_shock(i) * sqrt(R*T_local(i)*g(i)); % Freestream local velocity (m/s)
+    g_local = cp(round(T_local(i)))./(cp(round(T_local(i)))-R); % Ratio of Specfic Heats for local temp (unitless)
+    V_local(i) = m_behind_shock(i) * sqrt(R*T_local(i)*g_local); % Freestream local velocity (m/s)
 end
+
+T_w = T_local(1);      % Initial wall temp for Airframe (K)
 
 %% Prandtl Number calculation
 for i = 1:1:length(M_inf)
@@ -171,21 +178,66 @@ for i = 1:1:length(M_inf)
     %% Heat Flux
     q(i) = h(i) * (T_aw(i) - T_w);
 end
+%% Nosecone 
 
-%% Sutton Graves
+% Sutton Graves
 k = 1.7415e-4;
 for i=1:1:length(M_inf)
     V_inf = M_inf(i) * a_inf(i);
-    q_s(i) = k * sqrt(rho_inf(i)/R_nosecone) * (V_inf ^ 3);
+    q_stag(i) = k * sqrt(rho_inf(i)/R_nosecone) * (V_inf ^ 3);
+end
+
+% Nusselt Number Correlation
+%T_nosecone = 1000; % Temperature of the nosecone skin (K)
+
+%u_initial = 1.716*10^(-5);    % Reference dynamic viscosity (kg/m*s)
+%T_ref = 273.11;    % Sutherland reference temperature (K)
+%S = 110.56;             % Sutherland's constant (unitless)
+
+%T_stag = T_inf .* (1 + ((g - 1)./2) .* M_inf.^2);
+%P_stag = P_inf .* ((1 + ((g - 1)./2) .* M_inf.^2).^(g./(g-1)));
+%rho_stag = rho_inf .* ((1 + ((g - 1)./2) .* M_inf.^2).^(1./(g-1)));
+
+%Beta = 1./T_stag;
+
+%u_nosecone = u_0 .* (T_stag ./ T_ref) .^ (3 / 2) .* (T_ref + S) ./ (T_stag + S); % Dynamic viscosity of air (kg/m*s)
+%dynamic_vis = u_nosecone./rho_stag; % Kinematic viscoisty of air (m^2 * s)
+%Gr_stag = (9.81 .* Beta .* (T_nosecone - T_stag).*(D_nosecone.^3))./(dynamic_vis.^2); % Grashof number
+
+%for i = 1:1:length(M_inf)
+%    cp_stag(i) = cp(round(T_stag(i))); % Specific heat of air at constant pressure (Stagnation point) (J/kg*K)
+%    k_stag(i) = k_air(round(T_stag(i))); % Thermal Conductivity of air (Stagnation point) (W/ m^2 * K)
+%end
+
+%Pr_stag = (cp_stag .* u_nosecone) ./ k_stag;
+%Ra_stag = Gr_stag .* Pr_stag;
+%h_stag = k_stag .* ((0.6 + (0.387 .* (Ra_stag.^(1/6))) ./ (1 + ((0.559 ./ Pr_stag) .^ (9/16)) .^ (8/27))).^2) .* (1/D_nosecone);
+
+T_current = T_inf(1);
+
+for i = 1:1:length(M_inf)
+    Q = q_stag(i) * A_nose;
+    Delta_T = Q/(rho_nose* V_nose *c_nose);
+    T_new = T_current + Delta_T;
+    T_current = T_new;
+    T_final(i) = T_current;
+
+    h_stag(i) = Q /(T_current - T_inf(i));
 end
 
 %% HA Airframe Skin Temps %%
 t = 1:1:200; % Time step
 biot = (h / k_mat) * (V / A);
-Fourier = (Thermal_diff * t) / (Thick^2);
+for i = 1:1:length(t)
+    Fourier(i) = (Thermal_diff .* max(t)) ./ (Thick.^2);
+end
+Fourier = (Thermal_diff .* t) ./ (Thick.^2);
 biot_2 = (h / k_mat) * (Thick);
 
-IC = 300;
+IC = T_local(1);
+onecount = 0;
+twocount = 0;
+threecount = 0;
 
 Biot_known = [0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.15 0.2 0.25 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1 2 3 4 5 6 7 8 9 10 20 30 40 50 100];
 C_known = [1.0025 1.005 1.0075 1.0099 1.0124 1.0148 1.0173 1.0197 1.0222 1.0246 1.0365 1.0483 1.0598 1.0712 1.0932 1.1143 1.1345 1.1539 1.1724 1.1902 1.2071 1.3384 1.4191 1.4698 1.5029 1.5253 1.5411 1.5526 1.5611 1.5677 1.5919 1.5973 1.5993 1.6002 1.6015];
@@ -195,18 +247,23 @@ zeta = interp1(Biot_known,Zeta_known,biot_2);
 
 
 for i = 1:1:length(t)
-    if biot < 0.1 % Lum sum
-        [t,T_internal] = ode45(@(t,T_internal) energy_equation(t, T_internal, h(i), T_aw(i), V, A, T_local(i),rho_mat,c_mat), t, IC);
+    if biot(i) < 0.1 % Lum sum
+        %[t,T_internal] = ode45(@(t,T_internal) energy_equation(t, T_internal, h(i), T_aw(i), V, A, T_local(i),rho_mat,c_mat), t, IC);
+        b(i) = (h(i)*A)./(rho_mat.*V.*c_mat);
+        T_internal(i) = (IC-T_local(i))*exp(-b(i)*t(i)) + T_local(i);
+        onecount = onecount + 1;
     elseif Fourier(i) > 0.2 % 1st term approx
         T_internal(i) = (IC - T_local(i)) * (C(i) * exp((-zeta(i)^2)*Fourier(i))) + T_local(i);
-    elseif Fourier(i) <= 0.2
-        Part1 = erfc(Thick/(2*sqrt(Thermal_diff*t(i))));
-        Part2 = exp((h(i)*Thick/k_mat) + ((h(i)^2) * Thermal_diff * t(i))/(k_mat^2));
-        Part3 = erfc((Thick/(2*sqrt(Thermal_diff*t(i)))) + (h(i)*sqrt(Thermal_diff*t(i)) / k_mat));
+        twocount = twocount + 1;
+    elseif Fourier(i) <= 0.2 % Infinte Approx
+        %Part1 = erfc(Thick/(2*sqrt(Thermal_diff*t(i))));
+        %Part2 = exp((h(i)*Thick/k_mat) + ((h(i)^2) * Thermal_diff * t(i))/(k_mat^2));
+        %Part3 = erfc((Thick/(2*sqrt(Thermal_diff*t(i)))) + (h(i)*sqrt(Thermal_diff*t(i)) / k_mat));
+        Part1 = erfc(0/(2*sqrt(Thermal_diff*t(i))));
+        Part2 = exp((h(i)*0/k_mat) + ((h(i)^2) * Thermal_diff * t(i))/(k_mat^2));
+        Part3 = erfc((0/(2*sqrt(Thermal_diff*t(i)))) + (h(i)*sqrt(Thermal_diff*t(i)) / k_mat));
         T_internal(i) = (Part1 - (Part2 * Part3))*(T_local(i) - IC) + IC;
-        %T_skin(i) = ((2*q(i)*sqrt((Thermal_diff*time(i))/pi)/k_mat)*exp(-(Thick^2)/(4*Thermal_diff*time(i)))) - ((q(i)*Thick/k_mat) * (erfc(Thick/(2*sqrt(Thermal_diff*time(i)))))) + IC;  
-        %T_skin(i) = IC;
-        %T_skin(i) =(T_local(i) - IC) * (erfc(Thick/(2*Thermal_diff*time(i))) - exp(((h(i)*Thick)/k_mat) + (h(i)^2) * Thermal_diff * time(i)/(k_mat^2)) * erfc((Thick/(2*sqrt(Thermal_diff*time(i)))) + (h(i)*sqrt(Thermal_diff*time(i))/k_mat))) + IC;
+        threecount = threecount + 1;
     end
 end
 
@@ -243,44 +300,44 @@ xlabel('Time (s)')
 ylabel('q (W/m^2)')
 grid on;
 
-%subplot(3,2,3)
-%plot(time, T_aw, 'linewidth', 2.5)
-%title('Adiabatic Wall Temperature')
-%xlabel('Time (s)')
-%ylabel('T_a_w (K)')
-%grid on;
-
 subplot(3,3,3)
 plot(t, biot, 'linewidth', 2.5)
-title('Biot Number (Airframe with Fiberglass)')
+title('Biot Number (Airframe (hollow cylinder))')
 xlabel('Time (s)')
 ylabel('Bi')
 grid on;
 
 subplot(3,3,4)
-plot(t,q_s,'linewidth',2.5)
+plot(t,q_stag,'linewidth',2.5)
 title('Heat flux of Stagnation Point')
 xlabel('Time (s)')
 ylabel('q (W/m^2)')
 grid on;
 
 subplot(3,3,5)
+plot(t,h_stag,'linewidth',2.5)
+title('Heat Transfer Coeff of Stagnation Point')
+xlabel('Time (s)')
+ylabel('h (W/K * m^2)')
+grid on;
+
+subplot(3,3,6)
 plot(t,Fourier,'linewidth',2.5)
 title('Fourier Number (Fiberglass)')
 xlabel('Time (s)')
 ylabel('F_o')
 grid on;
 
-subplot(3,3,6)
+subplot(3,3,7)
 plot(t, biot_2, 'linewidth', 2.5)
-title('Biot Number_2 (Airframe with Fiberglass)')
+title('Biot Number Adjusted (Airframe (Solid Cylinder))')
 xlabel('Time (s)')
 ylabel('Bi')
 grid on;
 
-subplot(3,3,7)
-plot(t,T_inf-T_internal, 'linewidth', 2.5)
-title('Delta Temp (T_i_n_f - T_i_n_t_e_r_n_a_l) (Airframe)')
+subplot(3,3,8)
+plot(t,T_local-T_internal, 'linewidth', 2.5)
+title('Delta Temp (T_l_o_c_a_l - T_i_n_t_e_r_n_a_l) (Airframe)')
 xlabel('Time (s)')
 ylabel('Delta Temp (K)')
 grid on; 
